@@ -69,8 +69,22 @@ def fetch(url):
         return r.read().decode("utf-8", "replace")
 
 
+def ensure_window():
+    """Chrome on macOS keeps running after its last window is closed, and then
+    Playwright cannot attach. Open a window on the concert page in that case."""
+    import json
+    with urllib.request.urlopen(f"{CDP}/json/list", timeout=5) as r:
+        if any(t["type"] == "page" for t in json.load(r)):
+            return
+    log("Bot-Chrome hadde ingen vinduer — åpner konsertsiden")
+    req = urllib.request.Request(f"{CDP}/json/new?{ZELDA}", method="PUT")
+    urllib.request.urlopen(req, timeout=5).close()
+    time.sleep(2)
+
+
 def bot_page(p):
     """The existing tab in the bot Chrome (never opens a new one)."""
+    ensure_window()
     browser = p.chromium.connect_over_cdp(CDP)
     pages = [pg for ctx in browser.contexts for pg in ctx.pages]
     if not pages:
@@ -110,13 +124,16 @@ def main():
     ap.add_argument("--url", default=ZELDA, help="konsertsiden som skal overvåkes")
     ap.add_argument("--at", default="13:00", help="slipptid HH:MM (lokal tid)")
     ap.add_argument("--test", action="store_true",
-                    help="tørrkjøring mot en konsert som er i salg nå, starter umiddelbart")
+                    help="tørrkjøring mot en konsert som er i salg nå")
+    ap.add_argument("--in", dest="in_", type=int, default=20,
+                    help="(--test) sekunder til simulert slipp")
     a = ap.parse_args()
 
     url = TEST if a.test else a.url
     now = dt.datetime.now()
     if a.test:
-        release = now
+        # Demo: pretend the button only appears `--in` seconds from now.
+        release = now + dt.timedelta(seconds=a.in_)
     else:
         h, m = map(int, a.at.split(":"))
         release = now.replace(hour=h, minute=m, second=0, microsecond=0)
@@ -139,6 +156,10 @@ def main():
         except Exception as e:  # noqa: BLE001
             log(f"henting feilet: {e!r}")
             link = None
+        if a.test and left > 0:
+            link = None  # demo: hide the button until the simulated release
+        if not link and left <= FAST_FROM:
+            log(f"poll: ingen kjøpsknapp ({left:+.0f}s til slipp)")
 
         if link:
             log(f"KJØPSLENKE FUNNET: {link}")
