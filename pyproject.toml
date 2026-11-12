@@ -1,7 +1,7 @@
 [project]
 name = "zelda-tickets"
 version = "0.1.0"
-description = "Add your description here"
+description = "Opens the Konserthuset ticket page in your logged-in Chrome the moment sales open"
 requires-python = ">=3.12"
 dependencies = [
     "playwright>=1.65.1",

@@ -23,6 +23,7 @@ ZELDA = ("https://www.konserthuset.se/en/programme/calendar/concert/2027/"
 TEST = ("https://www.konserthuset.se/en/programme/calendar/concert/2026/"
         "leonkoro-quartet/20261114-1600/")
 CDP = "http://localhost:9222"
+watch_url = ZELDA  # page to open if the bot Chrome has no window; set in main()
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/130 Safari/537.36")
 
@@ -77,7 +78,7 @@ def ensure_window():
         if any(t["type"] == "page" for t in json.load(r)):
             return
     log("Bot-Chrome hadde ingen vinduer — åpner konsertsiden")
-    req = urllib.request.Request(f"{CDP}/json/new?{ZELDA}", method="PUT")
+    req = urllib.request.Request(f"{CDP}/json/new?{watch_url}", method="PUT")
     urllib.request.urlopen(req, timeout=5).close()
     time.sleep(2)
 
@@ -129,7 +130,10 @@ def main():
                     help="(--test) sekunder til simulert slipp")
     a = ap.parse_args()
 
+    global watch_url
     url = TEST if a.test else a.url
+    if not a.test:
+        watch_url = url
     now = dt.datetime.now()
     if a.test:
         # Demo: pretend the button only appears `--in` seconds from now.
