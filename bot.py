@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 from playwright.sync_api import sync_playwright
@@ -27,9 +28,12 @@ watch_url = ZELDA  # page to open if the bot Chrome has no window; set in main()
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/130 Safari/537.36")
 
-FAST_FROM = 90        # seconds before release: switch to fast polling
-FAST_EVERY = 1.5      # seconds between polls around release
-SLOW_EVERY = 30       # seconds between polls before that (catches early release)
+FAST_FROM = 10        # seconds before release: start fast polling
+FAST_FOR = 60         # seconds after release: keep fast polling this long
+FAST_EVERY = 0.5      # default seconds between polls in the fast window (--every)
+AFTER_EVERY = 2       # seconds between polls after the fast window
+SLOW_EVERY = 30       # seconds between polls before it (catches an early release)
+BACKOFF = 5           # seconds to pause if the site answers 403/429
 GIVE_UP_AFTER = 30    # minutes after release
 
 A_TAG = re.compile(r"<a\b[^>]*>", re.I)
@@ -126,6 +130,8 @@ def main():
     ap.add_argument("--at", default="13:00", help="slipptid HH:MM (lokal tid)")
     ap.add_argument("--test", action="store_true",
                     help="tørrkjøring mot en konsert som er i salg nå")
+    ap.add_argument("--every", type=float, default=FAST_EVERY,
+                    help=f"sekunder mellom sjekker rundt slipp (standard {FAST_EVERY})")
     ap.add_argument("--in", dest="in_", type=int, default=20,
                     help="(--test) sekunder til simulert slipp")
     a = ap.parse_args()
@@ -149,14 +155,23 @@ def main():
 
     preflight()
     log(f"Overvåker {url}")
-    log(f"Slipp: {release:%Y-%m-%d %H:%M}. Rask polling fra {FAST_FROM}s før.")
+    log(f"Slipp: {release:%Y-%m-%d %H:%M:%S}. Sjekker hvert {a.every}s fra {FAST_FROM}s før "
+        f"til {FAST_FOR}s etter, deretter hvert {AFTER_EVERY}s.")
 
     deadline = release + dt.timedelta(minutes=GIVE_UP_AFTER)
     last_note = None
     while dt.datetime.now() < deadline:
         left = (release - dt.datetime.now()).total_seconds()
+        t0 = time.monotonic()
+        backoff = 0
         try:
             link = find_buy_link(fetch(url))
+        except urllib.error.HTTPError as e:
+            log(f"henting feilet: HTTP {e.code}")
+            link = None
+            if e.code in (403, 429):
+                log(f"siden struper oss — pauser {BACKOFF}s (vurder høyere --every)")
+                backoff = BACKOFF
         except Exception as e:  # noqa: BLE001
             log(f"henting feilet: {e!r}")
             link = None
@@ -178,9 +193,11 @@ def main():
             if minute != last_note and (minute % 10 == 0 or minute <= 5):
                 log(f"{minute} min igjen, ingen kjøpsknapp ennå")
                 last_note = minute
-            time.sleep(min(SLOW_EVERY, max(1, left - FAST_FROM)))
+            time.sleep(max(backoff, min(SLOW_EVERY, max(0.05, left - FAST_FROM))))
         else:
-            time.sleep(FAST_EVERY)
+            every = a.every if left > -FAST_FOR else AFTER_EVERY
+            # Fixed cadence: subtract the time the fetch itself took.
+            time.sleep(max(backoff, every - (time.monotonic() - t0), 0))
 
     alert("Zelda-billetter", "Fant ingen kjøpsknapp — sjekk siden manuelt!")
     log("Ga opp etter fristen. Sjekk konsertsiden manuelt.")

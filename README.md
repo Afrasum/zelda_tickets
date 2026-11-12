@@ -21,8 +21,9 @@ billettslipp **13. november 2026 kl 13:00**. Fungerer for alle konserter på kon
   slipp. Ved slipp dukker det opp en lenke til
   `https://biljetter.konserthuset.se/en/buyingflow/tickets/<id>/`, som er hovedknappen med
   `data-track="buy-none"`. ID-en er ikke kjent på forhånd.
-- `bot.py` henter konsertsidens HTML (vanlig HTTP, ingen nettleser), hvert 30. sekund frem til
-  90 sekunder før slipp og deretter hvert 1,5 sekund. Når lenken finnes, styrer den den
+- `bot.py` henter konsertsidens HTML (vanlig HTTP, ingen nettleser). Den sjekker hvert 30.
+  sekund frem til 10 sekunder før slipp, så **hvert 0,5 sekund** til 60 sekunder etter slipp
+  (`--every` endrer dette), og deretter hvert 2. sekund. Svarer siden 403/429, pauser den i 5 sekunder. Når lenken finnes, styrer den den
   **eksisterende fanen** i bot-Chrome dit via Chrome DevTools Protocol (Playwright
   `connect_over_cdp`) og stopper.
 - `start_chrome.sh` starter en **egen** Chrome med egen profil (`./chrome-profile`, gitignored)
@@ -59,6 +60,13 @@ Rundt 12:30: lader i, lokket åpent, bot-Chrome åpen og innlogget.
 uv run python bot.py                    # standard: Zelda 19. juni, slipp 13:00
 ```
 
+Raskere eller roligere sjekking i slippvinduet (standard 0.5 s). Under ~0.3 s øker risikoen
+for at Cloudflare struper deg akkurat når det gjelder:
+
+```sh
+uv run python bot.py --every 1
+```
+
 Andre konserter / tider:
 
 ```sh
@@ -86,7 +94,7 @@ antall, sete, og betal.
 
 | Fil | Hva |
 |-----|-----|
-| `bot.py` | Overvåking, åpning av kjøpsside, varsling. `--test`, `--url`, `--at`, `--in` |
+| `bot.py` | Overvåking, åpning av kjøpsside, varsling. `--test`, `--url`, `--at`, `--every`, `--in` |
 | `start_chrome.sh` | Starter bot-Chrome (egen profil, debug-port 9222) |
 | `chrome-profile/` | Bot-Chromes profil med innloggingen din (gitignored, ikke del den) |
 
